@@ -4,8 +4,12 @@ using Havan.Application.ModelsIn;
 using Havan.Domain.Database;
 using Havan.Infra;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using System.Data;
 using System.Data.SqlClient;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace Havan.Services
 {
@@ -106,7 +110,6 @@ namespace Havan.Services
 				}
 
 			}
-
 		}
 
 		public async Task<dynamic> ListarTickets(Int64 TicketId)
@@ -133,6 +136,63 @@ namespace Havan.Services
 				}
 			}
 
+		}
+
+		public async Task<dynamic> Login(string Usuario, string Senha)
+		{
+			using (var db = new Connection(_configuration.GetConnectionString("Havan")))
+			{
+				try
+				{
+					var usuario = await db.Usuario.FirstOrDefaultAsync(x => x.Nome.ToLower() == Usuario.ToLower() && x.Codigo == Senha);
+					if (usuario == null) throw new Exception("Usuário ou senha inválidos");
+
+					var token = GerarToken(Usuario, Senha);
+
+					return new 
+					{
+						Usuario = usuario.Nome,
+						Token = token
+					};
+
+				}
+				catch (Exception ex)
+				{
+					throw ex;
+				}
+			}
+		}
+
+		private async Task<dynamic> GerarToken(string Usuario, string Senha)
+		{
+			using (var db = new Connection(_configuration.GetConnectionString("Havan")))
+			{
+				try
+				{
+					var tokenHandler = new JwtSecurityTokenHandler();
+
+					byte[] key = Encoding.ASCII.GetBytes(ApiSettings.Secret);
+
+					var tokenDescripto = new SecurityTokenDescriptor
+					{
+						Subject = new ClaimsIdentity(new[]
+						{
+							new Claim(type:ClaimTypes.Name, value:Usuario)
+						}),
+
+						Expires = DateTime.Now.AddHours(4),
+						SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), algorithm: SecurityAlgorithms.HmacSha256Signature)
+					};
+
+					var token = tokenHandler.CreateToken(tokenDescripto);
+
+					return tokenHandler.WriteToken(token);
+				}
+				catch (Exception ex)
+				{
+					throw ex;
+				}
+			}
 		}
 	}
 }
